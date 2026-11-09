@@ -61,6 +61,12 @@ Night Share % = DIVIDE ( [Night Collisions], [Total Collisions] )
 Geocoded % =
 DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_geocoded] = TRUE () ), [Total Collisions] )
 
+Collisions 12M Avg =
+AVERAGEX (
+    DATESINPERIOD ( dim_date[date], MAX ( dim_date[date] ), -12, MONTH ),
+    [Total Collisions]
+)
+
 Neighbourhood Injury % =
 DIVIDE ( [Injury or Fatal Collisions], [Total Collisions] )
 ```

@@ -5,6 +5,7 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 .DS_Store
+_local-notes.md
 
 # raw source data is not committed
 *.csv
