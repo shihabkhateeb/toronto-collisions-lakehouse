@@ -72,6 +72,7 @@ typed AS (
   SELECT
     _id,
     _ingested_at,
+    occ_ts,
     OCC_DATE                        AS occ_date_raw,
     upper(trim(OCC_DOW))            AS source_dow,
     try_cast(OCC_YEAR AS INT)       AS source_year,
