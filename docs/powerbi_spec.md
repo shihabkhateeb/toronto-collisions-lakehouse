@@ -1,29 +1,30 @@
-# Power BI build spec — one page, six visuals
+# Power BI build spec
 
-Match the Streamlit app so the two artifacts tell the same story.
-Canvas: **1280 × 720**. Theme file: `dashboard/theme.json`.
+One report, two pages: **Overview** (the story) and **Data quality**. Canvas 1280 × 720.
+Theme: `dashboard/theme.json`.
 
 ## 1. Get the data
 
-Export first (`notebooks/05_export_gold.py`), then in Power BI Desktop:
+Export first (`notebooks/05_export_gold.py`), download the seven Parquet files from
+`/Volumes/workspace/collisions_gold/exports/`, and rename them into `app/data/`.
 
-**Home → Get Data → Parquet** → point at each folder, or **Get Data → Folder** and point at the
-export directory. Import these tables:
+Then in Power BI Desktop:
 
-- `fact_collision`
-- `dim_date`, `dim_division`, `dim_neighbourhood`, `dim_location`
-- `dq_results`
+**Home → Get Data → Parquet** → select `app/data/<table>.parquet`, one table per query.
+Repeat for the six tables you need (`fact_collision`, `dim_date`, `dim_division`,
+`dim_neighbourhood`, `dim_location`, `dq_results`).
 
-Then **Transform Data**:
+Do **not** point the **Folder** connector at the exports root: it recurses into all
+seven table folders and merges different schemas. If you must use Folder, point it at
+one table folder, filter `Extension = ".parquet"`, then combine.
 
-1. In `fact_collision`, change `is_injury`, `is_ftr`, `is_pd`, `is_fatal`, `is_geocoded`,
-   `involved_*` to **True/False** if they arrive as text.
-2. In `dim_date`, set `date` to **Date** type.
-3. Confirm `hour`, `fatalities`, `date_key`, `*_key` are whole numbers.
+In **Transform Data**:
+
+1. `fact_collision.hour` must be a whole number and may be null.
+2. `dim_date.date` → Date.
+3. Turn off **File → Options → Data load → Auto date/time**.
 
 ## 2. Model
-
-Disable **File → Options → Data load → Auto date/time** first.
 
 | From | To | Cardinality | Direction |
 |---|---|---|---|
@@ -32,8 +33,33 @@ Disable **File → Options → Data load → Auto date/time** first.
 | `dim_neighbourhood[neighbourhood_key]` | `fact_collision[neighbourhood_key]` | 1 → * | Single |
 | `dim_location[location_key]` | `fact_collision[location_key]` | 1 → * | Single |
 
-Also set **Mark as date table** → `dim_date[date]`.
-In `dim_date`, select `day_name` → **Sort by column → `day_of_week`** (so Monday–Sunday order holds).
+Mark `dim_date[date]` as the date table.
+
+Calculated columns:
+
+```dax
+Day Sort = WEEKDAY ( dim_date[date], 2 )
+```
+
+Sort `dim_date[day_name]` by `Day Sort` so the week runs Monday → Sunday.
+(`day_of_week` in gold starts at Sunday, so sorting by it gives Sunday first.)
+
+```dax
+Is Night =
+IF (
+    NOT ISBLANK ( fact_collision[hour] )
+        && ( fact_collision[hour] >= 22 || fact_collision[hour] < 6 ),
+    "Night",
+    "Day"
+)
+```
+
+Use `fact_collision[Is Night]` as the night slicer. Do not filter on `hour` directly:
+BLANK is treated as 0 in DAX, so `hour < 6` would count unknown hours as night.
+
+```dax
+Status = IF ( dq_results[passed], "PASS", "FAIL" )
+```
 
 ## 3. Measures
 
@@ -43,66 +69,118 @@ Total Collisions = COUNTROWS ( fact_collision )
 Injury or Fatal Collisions =
 CALCULATE (
     [Total Collisions],
-    FILTER ( fact_collision, fact_collision[is_injury] = TRUE () || fact_collision[is_fatal] = TRUE () )
+    FILTER (
+        fact_collision,
+        fact_collision[is_injury] = TRUE () || fact_collision[is_fatal] = TRUE ()
+    )
 )
 
-Injury or Fatal % = DIVIDE ( [Injury or Fatal Collisions], [Total Collisions] )
+Injury or Fatal % = DIVIDE ( [Injury or Fatal Collisions], [Total Collisions], 0 )
 
-Fatalities = SUM ( fact_collision[fatalities] )
+Fatalities = SUM ( fact_collision[fatalities] ) + 0
 
 Fail to Remain % =
-DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_ftr] = TRUE () ), [Total Collisions] )
+DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_ftr] = TRUE () ), [Total Collisions], 0 )
 
 Night Collisions =
-CALCULATE ( [Total Collisions], fact_collision[hour] >= 22 || fact_collision[hour] < 6 )
-
-Night Share % = DIVIDE ( [Night Collisions], [Total Collisions] )
-
-Geocoded % =
-DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_geocoded] = TRUE () ), [Total Collisions] )
-
-Collisions 12M Avg =
-AVERAGEX (
-    DATESINPERIOD ( dim_date[date], MAX ( dim_date[date] ), -12, MONTH ),
-    [Total Collisions]
+CALCULATE (
+    [Total Collisions],
+    NOT ISBLANK ( fact_collision[hour] )
+        && ( fact_collision[hour] >= 22 || fact_collision[hour] < 6 )
 )
 
-Neighbourhood Injury % =
-DIVIDE ( [Injury or Fatal Collisions], [Total Collisions] )
+Night Share % = DIVIDE ( [Night Collisions], [Total Collisions], 0 )
+
+Geocoded % =
+DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_geocoded] = TRUE () ), [Total Collisions], 0 )
+
+Collisions 12M Avg =
+VAR CurrentMonth = MAX ( dim_date[date] )
+VAR WindowStart = EDATE ( CurrentMonth, -11 )
+RETURN
+    AVERAGEX (
+        CALCULATETABLE (
+            SUMMARIZE ( dim_date, dim_date[year], dim_date[month] ),
+            dim_date[date] >= DATE ( YEAR ( WindowStart ), MONTH ( WindowStart ), 1 ),
+            dim_date[date] <= CurrentMonth
+        ),
+        CALCULATE ( [Total Collisions] )
+    )
 ```
 
-Do **not** call this KSI. The source splits fatality from injury but has no
-"serious injury" flag, so "injury or fatal" is the honest label.
+`Collisions 12M Avg` averages **monthly totals**, not daily rows. Filter the trend
+visual to complete months, otherwise the partial final snapshot month pulls it down.
 
-## 4. Layout
+There is no KSI measure: the source has no serious-injury field, only a fatality count
+and an injury flag. Use "Injury or fatal" everywhere.
+
+## 4. Layout — Overview page
 
 | Zone | Position (x, y, w, h) | Visual | Fields |
 |---|---|---|---|
-| KPI | 0,0 → 6 cards across the top, h=80 | Card ×5 | `Total Collisions`, `Injury or Fatal %`, `Fatalities`, `Fail to Remain %`, `Geocoded %` |
-| Trend | 0,100,620,320 | Line | Axis `dim_date[date]` (month), Values `Total Collisions`; add a 12-month moving average measure |
-| Heatmap | 640,100,620,320 | Matrix with conditional formatting, or a Python/R-free row-per-hour matrix | Rows `dim_date[day_name]`, Columns `fact_collision[hour]`, Values `Total Collisions`, background colour scale red |
-| Neighbourhoods | 0,440,620,260 | Clustered bar (horizontal), top 10 | Axis `dim_neighbourhood[neighbourhood]`, Values `Neighbourhood Injury %`; filter `Total Collisions >= 500` |
-| Road users | 640,440,620,260 | Clustered column | One column per `involved_*` flag counted as % of injury-or-fatal; use a field parameter or a small unpivot |
-| DQ panel | second page | Table | `dq_results[check_name, severity, failures, status]` |
+| Slicers | 0,0 → one row, h=64 | Slicer ×3 | `dim_date[year]` (between), `dim_division[division]`, `fact_collision[Is Night]` |
+| KPI | 0,80 → 5 cards across, h=80 | Card ×5 | `Total Collisions`, `Injury or Fatal %`, `Fatalities`, `Fail to Remain %`, `Geocoded %` |
+| Trend | 0,180,620,320 | Line | Axis `dim_date[date]` (month), Values `Total Collisions` + `Collisions 12M Avg` |
+| Heatmap | 640,180,620,320 | Matrix with conditional formatting | Rows `dim_date[day_name]`, Columns `fact_collision[hour]`, Values `Total Collisions`, blue scale |
+| Neighbourhoods | 0,520,620,180 | Clustered bar (horizontal) | Axis `dim_neighbourhood[neighbourhood]`, Values `Injury or Fatal %` |
+| Road users | 640,520,620,180 | Clustered column | Axis `bridge_collision_road_user[road_user]`, Values below |
 
-Slicers (top-right on the row above the KPIs): `dim_date[year]` (between), `dim_division[division]`, and a
-Night toggle via a disconnected table or a bookmark pair.
+Neighbourhood bar — three visual-level filters:
 
-**Formatting:** data labels on, gridlines off, `Collisions` as `#,0`, percentages as `0.0%`,
-red (`#C0392B`) reserved for injury/fatal only, everything else neutral grey or the accent green.
+1. `dim_neighbourhood[neighbourhood]` is not `UNKNOWN`
+2. `[Total Collisions] >= 500`
+3. **Top N** → Show items: 10 → By value: `[Injury or Fatal %]`
 
-## 5. Export
+Road users need the bridge table (`bridge_collision_road_user`, relationships:
+`fact_collision[collision_id]` 1 → * `bridge_collision_road_user[collision_id]`).
+Import it even though the Streamlit app does not use it.
 
-**File → Export → Export to PDF**, save as `dashboard/collisions.pdf`, commit it.
-Also keep the `.pbix` in `dashboard/` so reviewers can open the model.
+```dax
+Share of Collisions =
+DIVIDE (
+    [Total Collisions],
+    CALCULATE ( [Total Collisions], REMOVEFILTERS ( bridge_collision_road_user ) ),
+    0
+)
 
-"Publish to web" needs tenant admin rights, so the exported PDF is the shareable
-snapshot and the Streamlit app carries the interactive version.
+Share of Injury or Fatal =
+DIVIDE (
+    [Injury or Fatal Collisions],
+    CALCULATE ( [Injury or Fatal Collisions], REMOVEFILTERS ( bridge_collision_road_user ) ),
+    0
+)
+```
 
-## 6. Checks before you call it done
+Caption the visual: a collision can involve more than one road user, so the shares do
+not sum to 100%.
 
-- [ ] Year slicer changes every visual (no visual bound to a table outside the model)
-- [ ] Neighbourhood filter shows `(Blank)` nowhere — unknowns map to key 0 / `UNKNOWN`
+## 5. Layout — Data quality page
+
+Table with `dq_results[check_name]`, `[severity]`, `[failures]`, `[unit]`, `[Status]`,
+`[checked_at]`, sorted by severity then status. Keep `unit`: `failures = 1` means
+something different for `rows`, `groups` and `flag`.
+
+## 6. Formatting
+
+- Data labels on, gridlines off.
+- Numbers `#,0`; percentages `0.0%`.
+- Red (`#C0392B`) only for injury/fatal series. The heatmap uses a blue scale, because
+  red there would mean "density", not "severity".
+- Set red explicitly on the injury measure; it is not the second entry in the theme's
+  colour list.
+
+## 7. Export
+
+**File → Export → Export to PDF** → `dashboard/collisions.pdf` (two pages).
+Save the `.pbix` next to it. "Publish to web" needs tenant admin rights, so the PDF is
+the static artifact and the Streamlit app carries the interactive version.
+
+## 8. Checks before you call it done
+
+- [ ] Year slicer changes every visual
+- [ ] Neighbourhood bar shows exactly 10 rows and no `UNKNOWN`
 - [ ] Day names run Monday → Sunday
+- [ ] Night KPI matches the app for the same filter
 - [ ] KPI totals match `SELECT COUNT(*) FROM fact_collision`
-- [ ] PDF is one page, readable at 100% zoom
+- [ ] DQ page shows 0 blocking failures
+- [ ] PDF pages are readable at 100% zoom

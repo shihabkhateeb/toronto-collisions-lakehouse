@@ -65,9 +65,20 @@ notebooks/05_export_gold.py       Python notebook (refuses to export if any erro
 
 **3. Dashboard**
 
-Download the seven files from `/Volumes/workspace/collisions_gold/exports/` into
-`app/data/`, then `streamlit run app/streamlit_app.py`. Power BI setup is in
+Download the six Parquet files the app reads (plus the optional
+`bridge_collision_road_user` for Power BI) from
+`/Volumes/workspace/collisions_gold/exports/` into `app/data/`. Power BI setup is in
 `docs/powerbi_spec.md`.
+
+**4. Deploy the Streamlit app**
+
+1. Commit the six files in `app/data/` (`bridge_collision_road_user` is optional).
+2. Push, then create an app at <https://share.streamlit.io> with **Main file path**
+   `app/streamlit_app.py`.
+3. Requirements come from `app/requirements.txt`; the theme from the repo-root
+   `.streamlit/config.toml`.
+4. Test: all years, one year, night-only, a division filter, and a filter that returns
+   zero rows.
 
 ## Catalog note
 
@@ -80,8 +91,9 @@ references), not just the `USE CATALOG` line.
 
 The source separates fatalities from an injury flag but has **no serious-injury
 field**, so the dashboard says "injury or fatal" throughout. It also has no street or
-intersection names — hotspots are neighbourhoods plus 4-decimal coordinate clusters
-(~11 m), not named intersections.
+intersection names. The Streamlit map aggregates collisions into 3-decimal coordinate
+clusters (~110 m); the gold layer's `dim_location` keeps 4 decimals (~11 m). Neither is
+a named intersection.
 
 ## Limitations
 

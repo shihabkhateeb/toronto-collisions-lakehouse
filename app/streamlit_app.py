@@ -2,7 +2,9 @@
 
 Reads the exports produced by notebooks/05_export_gold.py (drop them in ./data).
 
-Run locally:  pip install -r requirements.txt && streamlit run streamlit_app.py
+Run locally from the repo root:
+    pip install -r app/requirements.txt
+    streamlit run app/streamlit_app.py
 """
 
 from pathlib import Path
@@ -47,7 +49,9 @@ def _read(name: str) -> pd.DataFrame:
     raise FileNotFoundError(name)
 
 
-@st.cache_data(show_spinner="Loading collision data…")
+# cache_resource shares one loaded frame across viewers; cache_data would copy it
+# per session, and the merged frame is ~160-400 MB.
+@st.cache_resource(show_spinner="Loading collision data…", ttl=3600)
 def load_data():
     missing = [t for t in TABLES if not any((DATA_DIR / f"{t}{e}").exists() for e in (".parquet", ".csv"))]
     if missing:
@@ -87,15 +91,39 @@ def kpi_row(frame: pd.DataFrame) -> None:
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Collisions", f"{total:,.0f}")
-    c2.metric("Injury or fatal", f"{injured:,.0f}", f"{injured / total * 100:.1f}% of total" if total else None)
+    c2.metric(
+        "Injury or fatal",
+        f"{injured:,.0f}",
+        help=f"{injured / total * 100:.1f}% of collisions in this selection" if total else None,
+    )
     c3.metric("Fatalities", f"{fatalities:,.0f}")
     c4.metric("Fail to remain", f"{ftr:.1f}%")
     c5.metric("Geocoded", f"{geocoded:.1f}%")
 
 
 def trend_chart(frame: pd.DataFrame) -> None:
-    trend = frame.groupby("month_start").size().reset_index(name="collisions")
-    trend["rolling_12m"] = trend["collisions"].rolling(12, min_periods=3).mean()
+    monthly = frame.groupby("month_start").size().reset_index(name="collisions")
+    if monthly.empty:
+        st.info("No months to plot in this selection.")
+        return
+
+    # the snapshot month is partial (through 20 July 2026); drop it or it drags the line down
+    last_date = frame["date"].max()
+    dropped_partial = False
+    if pd.notna(last_date) and last_date.day < 25 and len(monthly) > 1:
+        monthly = monthly.iloc[:-1]
+        dropped_partial = True
+
+    # reindex to calendar months so a gap counts as zero instead of shifting the window
+    months = pd.date_range(
+        monthly["month_start"].min(), monthly["month_start"].max(), freq="MS"
+    )
+    trend = (
+        monthly.set_index("month_start")
+        .reindex(months, fill_value=0)
+        .rename_axis("month_start")
+        .reset_index()
+    )
 
     fig = go.Figure()
     fig.add_trace(
@@ -107,15 +135,17 @@ def trend_chart(frame: pd.DataFrame) -> None:
             line=dict(color=NEUTRAL, width=1),
         )
     )
-    fig.add_trace(
-        go.Scatter(
-            x=trend["month_start"],
-            y=trend["rolling_12m"],
-            mode="lines",
-            name="12-month average",
-            line=dict(color=ACCENT, width=3),
+    if len(trend) >= 12:
+        trend["rolling_12m"] = trend["collisions"].rolling(12, min_periods=12).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=trend["month_start"],
+                y=trend["rolling_12m"],
+                mode="lines",
+                name="12-month average",
+                line=dict(color=ACCENT, width=3),
+            )
         )
-    )
     fig.update_layout(
         height=340,
         margin=dict(l=10, r=10, t=30, b=10),
@@ -125,9 +155,20 @@ def trend_chart(frame: pd.DataFrame) -> None:
         plot_bgcolor="white",
     )
     st.plotly_chart(fig, width="stretch")
+    if dropped_partial:
+        st.caption("The partial final month of the snapshot is excluded.")
+    if len(trend) < 12:
+        st.caption("A 12-month average needs at least 12 months in the selection.")
 
 
 def heatmap_chart(frame: pd.DataFrame) -> None:
+    if frame["hour"].isna().all():
+        st.info(
+            "Hour is missing for every collision in this selection, so the heatmap cannot be shown."
+        )
+        return
+
+    missing_hours = int(frame["hour"].isna().sum())
     pivot = (
         frame.pivot_table(index="day_name", columns="hour", values="collision_id", aggfunc="count")
         .reindex(DAYS)
@@ -139,7 +180,7 @@ def heatmap_chart(frame: pd.DataFrame) -> None:
             z=pivot.values,
             x=list(range(24)),
             y=DAYS,
-            colorscale="Reds",
+            colorscale="Blues",
             hovertemplate="%{y} %{x}:00<br>%{z:,} collisions<extra></extra>",
             colorbar=dict(title="Collisions", thickness=10),
         )
@@ -152,6 +193,11 @@ def heatmap_chart(frame: pd.DataFrame) -> None:
         plot_bgcolor="white",
     )
     st.plotly_chart(fig, width="stretch")
+    if missing_hours:
+        st.caption(
+            f"Excludes {missing_hours:,} collisions with unknown hour "
+            f"({missing_hours / len(frame):.1%})."
+        )
 
 
 def neighbourhood_chart(frame: pd.DataFrame, min_volume: int) -> None:
@@ -160,20 +206,27 @@ def neighbourhood_chart(frame: pd.DataFrame, min_volume: int) -> None:
         .agg(collisions=("collision_id", "count"), injured=("injury_or_fatal", "sum"))
         .reset_index()
     )
-    g = g[g["neighbourhood"].notna() & (g["collisions"] >= min_volume)]
+    g = g[
+        g["neighbourhood"].notna()
+        & (g["neighbourhood"] != "UNKNOWN")
+        & (g["collisions"] >= min_volume)
+    ]
     if g.empty:
         st.info(f"No neighbourhood has at least {min_volume:,} collisions in this selection.")
         return
 
     g["injury_rate"] = g["injured"] / g["collisions"] * 100
     g = g.nlargest(10, "injury_rate").sort_values("injury_rate")
+    g["label"] = g.apply(
+        lambda r: f"{r['injury_rate']:.1f}% (n={int(r['collisions']):,})", axis=1
+    )
 
     fig = px.bar(
         g,
         x="injury_rate",
         y="neighbourhood",
         orientation="h",
-        text=g["injury_rate"].map(lambda v: f"{v:.1f}%"),
+        text="label",
         hover_data={"collisions": ":,", "injured": ":,", "injury_rate": ":.1f"},
         color_discrete_sequence=[ALERT],
     )
@@ -187,7 +240,10 @@ def neighbourhood_chart(frame: pd.DataFrame, min_volume: int) -> None:
         showlegend=False,
     )
     st.plotly_chart(fig, width="stretch")
-    st.caption(f"Neighbourhoods with at least {min_volume:,} collisions in the current selection.")
+    st.caption(
+        f"Neighbourhoods with at least {min_volume:,} collisions. "
+        "Unassigned areas (UNKNOWN) are excluded from this ranking."
+    )
 
 
 def road_user_chart(frame: pd.DataFrame) -> None:
@@ -200,14 +256,19 @@ def road_user_chart(frame: pd.DataFrame) -> None:
     }
     rows = []
     total = len(frame)
-    injured_total = int(frame["injury_or_fatal"].sum()) or 1
+    injured_total = int(frame["injury_or_fatal"].sum())
     for col, label in mapping.items():
         mask = frame[col].fillna(False)
+        share_injured = (
+            frame.loc[mask, "injury_or_fatal"].sum() / injured_total * 100
+            if injured_total
+            else float("nan")
+        )
         rows.append(
             {
                 "Road user": label,
                 "Share of collisions": mask.sum() / total * 100 if total else 0,
-                "Share of injury or fatal": frame.loc[mask, "injury_or_fatal"].sum() / injured_total * 100,
+                "Share of injury or fatal": share_injured,
             }
         )
     ru = pd.DataFrame(rows).melt(id_vars="Road user", var_name="Measure", value_name="Percent")
@@ -231,11 +292,17 @@ def road_user_chart(frame: pd.DataFrame) -> None:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title=None),
     )
     st.plotly_chart(fig, width="stretch")
-    st.caption("A collision can involve more than one road user, so shares do not sum to 100%.")
+    st.caption(
+        "A collision can involve more than one road user, so shares do not sum to 100%. "
+        "Share of collisions uses all collisions; share of injury or fatal uses injury-or-fatal collisions only."
+    )
 
 
 def hotspot_map(frame: pd.DataFrame) -> None:
-    pts = frame.dropna(subset=["loc_lat", "loc_long"]).copy()
+    pts = frame.loc[
+        frame["loc_lat"].notna() & frame["loc_long"].notna(),
+        ["collision_id", "loc_lat", "loc_long", "injury_or_fatal"],
+    ].copy()
     if pts.empty:
         st.info("No geocoded collisions in this selection.")
         return
@@ -287,11 +354,12 @@ def dq_panel(dq: pd.DataFrame) -> None:
 
     view = dq.copy()
     view["status"] = passed.map({True: "PASS", False: "FAIL"})
-    view["failures"] = view["failures"].fillna(0).astype("int64").map("{:,}".format)
+    view["failures"] = view["failures"].fillna(0).astype("int64")
     st.dataframe(
-        view[["status", "check_name", "severity", "failures", "checked_at"]],
+        view[["status", "check_name", "severity", "failures", "unit", "checked_at"]],
         width="stretch",
         hide_index=True,
+        column_config={"failures": st.column_config.NumberColumn(format="localized")},
     )
 
 
@@ -358,12 +426,15 @@ def main() -> None:
 
     with tab_hotspots:
         left, right = st.columns([1, 1])
+        # a single year has ~65k collisions across ~158 neighbourhoods; 500 is too high there
+        default_min = 500 if f["year"].nunique() > 1 else 100
         min_vol = left.slider(
             "Minimum collisions per neighbourhood",
             min_value=50,
             max_value=2000,
-            value=500,
+            value=default_min,
             step=50,
+            key=f"min_vol_{y0}_{y1}",
         )
         with left:
             st.subheader("Highest injury rate")

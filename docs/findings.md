@@ -22,8 +22,9 @@ do not add up to 100%.
   severity given a collision, not the chance of being in one.
 - **Reporting bias.** Fail-to-remain collisions are under-recorded, and minor
   property-damage collisions are inconsistently reported across years.
-- **No street or intersection names.** Hotspots are coordinate clusters rounded to four
-  decimal places (~11 m), plus neighbourhoods. They are not named intersections.
+- **No street or intersection names.** Hotspots in the Streamlit map are coordinate
+  clusters rounded to three decimal places (~110 m); `dim_location` keeps four
+  decimals (~11 m). Neither is a named intersection, and neither is polygon-based.
 - **No serious-injury field.** The source separates fatalities from an injury flag, so
   every measure is labelled "injury or fatal" rather than KSI.
 - **Unassigned records.** Collisions with `NSA` division or neighbourhood, and
