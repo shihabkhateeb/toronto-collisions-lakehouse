@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS collisions_rejected (
 -- MAGIC %md
 -- MAGIC ## Staging: parse everything, judge nothing yet
 
+-- COMMAND ----------
+
 CREATE OR REPLACE TABLE stg_collisions AS
 WITH deduped AS (
   SELECT
@@ -171,6 +173,8 @@ FROM judged;
 
 -- MAGIC %md
 -- MAGIC ## Clean layer
+
+-- COMMAND ----------
 
 CREATE OR REPLACE TABLE collisions_clean AS
 SELECT

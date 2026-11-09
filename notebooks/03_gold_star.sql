@@ -114,7 +114,9 @@ LEFT JOIN dim_location l      ON round(s.lat, 4) = l.lat AND round(s.long, 4) = 
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC Long format for road-user analysis (pedestrian / cyclist share of KSI).
+-- MAGIC Long format for road-user analysis (pedestrian / cyclist share of injury or fatal).
+
+-- COMMAND ----------
 
 CREATE OR REPLACE TABLE bridge_collision_road_user AS
 SELECT collision_id, 'Automobile' AS road_user FROM fact_collision WHERE involved_automobile
