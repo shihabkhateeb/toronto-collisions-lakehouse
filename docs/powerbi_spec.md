@@ -77,7 +77,7 @@ CALCULATE (
 
 Injury or Fatal % = DIVIDE ( [Injury or Fatal Collisions], [Total Collisions], 0 )
 
-Fatalities = SUM ( fact_collision[fatalities] ) + 0
+Total Fatalities = SUM ( fact_collision[fatalities] ) + 0
 
 Fail to Remain % =
 DIVIDE ( CALCULATE ( [Total Collisions], fact_collision[is_ftr] = TRUE () ), [Total Collisions], 0 )
@@ -119,7 +119,7 @@ and an injury flag. Use "Injury or fatal" everywhere.
 | Zone | Position (x, y, w, h) | Visual | Fields |
 |---|---|---|---|
 | Slicers | 0,0 → one row, h=64 | Slicer ×3 | `dim_date[year]` (between), `dim_division[division]`, `fact_collision[Is Night]` |
-| KPI | 0,80 → 5 cards across, h=80 | Card ×5 | `Total Collisions`, `Injury or Fatal %`, `Fatalities`, `Fail to Remain %`, `Geocoded %` |
+| KPI | 0,80 → 5 cards across, h=80 | Card ×5 | `Total Collisions`, `Injury or Fatal %`, `Total Fatalities`, `Fail to Remain %`, `Geocoded %` |
 | Trend | 0,180,620,320 | Line | Axis `dim_date[date]` (month), Values `Total Collisions` + `Collisions 12M Avg` |
 | Heatmap | 640,180,620,320 | Matrix with conditional formatting | Rows `dim_date[day_name]`, Columns `fact_collision[hour]`, Values `Total Collisions`, blue scale |
 | Neighbourhoods | 0,520,620,180 | Clustered bar (horizontal) | Axis `dim_neighbourhood[neighbourhood]`, Values `Injury or Fatal %` |
