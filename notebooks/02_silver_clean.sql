@@ -61,7 +61,6 @@ ts AS (
       ELSE coalesce(
         try_to_timestamp(OCC_DATE),
         try_to_timestamp(OCC_DATE, 'yyyy-MM-dd HH:mm:ss'),
-        try_to_timestamp(OCC_DATE, 'yyyy-MM-dd''T''HH:mm:ss'),
         try_to_timestamp(OCC_DATE, 'M/d/yyyy H:mm:ss'),
         try_to_timestamp(OCC_DATE, 'M/d/yyyy h:mm:ss a')
       )
