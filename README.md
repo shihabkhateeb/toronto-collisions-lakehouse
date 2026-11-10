@@ -2,6 +2,8 @@
 
 Medallion pipeline + dashboard over **825,265** City of Toronto collision records (2014–2026, refreshed 2026-07-20).
 
+**Live demo:** <https://toronto-collisions-lakehouse-irb6l4lvvrwsi6hpyqw8aa.streamlit.app/>
+
 **Decision question:** Which neighbourhoods should Vision Zero prioritize, and when are collisions concentrated?
 
 ## What's here
