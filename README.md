@@ -65,19 +65,18 @@ notebooks/05_export_gold.py       Python notebook (refuses to export if any erro
 
 **3. Dashboard**
 
-Download the six Parquet files the app reads (plus the optional
-`bridge_collision_road_user` for Power BI) from
-`/Volumes/workspace/collisions_gold/exports/` into `app/data/`. Power BI setup is in
+The seven exported Parquet files are committed in `app/data/`, so the app runs as-is.
+To refresh them: re-run notebook 05, download the new files from
+`/Volumes/workspace/collisions_gold/exports/`, and copy them over. Power BI setup is in
 `docs/powerbi_spec.md`.
 
 **4. Deploy the Streamlit app**
 
-1. Commit the six files in `app/data/` (`bridge_collision_road_user` is optional).
-2. Push, then create an app at <https://share.streamlit.io> with **Main file path**
+1. Create an app at <https://share.streamlit.io> with **Main file path**
    `app/streamlit_app.py`.
-3. Requirements come from `app/requirements.txt`; the theme from the repo-root
+2. Requirements come from `app/requirements.txt`; the theme from the repo-root
    `.streamlit/config.toml`.
-4. Test: all years, one year, night-only, a division filter, and a filter that returns
+3. Test: all years, one year, night-only, a division filter, and a filter that returns
    zero rows.
 
 ## Catalog note
