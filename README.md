@@ -11,13 +11,11 @@ Medallion pipeline + dashboard over **825,265** City of Toronto collision record
 - `notebooks/` — bronze → silver → gold pipeline, 17 data-quality checks, Parquet export
 - `app/` — Streamlit dashboard over the exported tables
 - `docs/architecture.md` — pipeline and star-schema diagrams
-- `docs/powerbi_spec.md` — Power BI model, measures and layout
 - `docs/findings.md` — findings and limitations
-- `dashboard/` — Power BI theme file
 
 ## Stack
 
-Databricks Free Edition (serverless) · Delta Lake · PySpark · Spark SQL · Power BI Desktop · Streamlit
+Databricks Free Edition (serverless) · Delta Lake · PySpark · Spark SQL · Streamlit · Plotly
 
 ## Two data facts that drive the whole design
 
@@ -37,7 +35,7 @@ CSV (CKAN datastore)
        ├─ silver.collisions_rejected  critical failures + reason
        └─ silver.dq_results           17 checks
             └─ gold.fact_collision + 4 dims + bridge_collision_road_user
-                 └─ 05 export → Parquet → Power BI / Streamlit
+                 └─ 05 export → Parquet → Streamlit
 ```
 
 **Grain of `fact_collision`: one collision occurrence (`_id`).**
@@ -67,10 +65,9 @@ notebooks/05_export_gold.py       Python notebook (refuses to export if any erro
 
 **3. Dashboard**
 
-The seven exported Parquet files are committed in `app/data/`, so the app runs as-is.
+The six exported Parquet files are committed in `app/data/`, so the app runs as-is.
 To refresh them: re-run notebook 05, download the new files from
-`/Volumes/workspace/collisions_gold/exports/`, and copy them over. Power BI setup is in
-`docs/powerbi_spec.md`.
+`/Volumes/workspace/collisions_gold/exports/`, and copy them over.
 
 **4. Deploy the Streamlit app**
 

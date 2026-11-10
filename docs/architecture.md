@@ -14,7 +14,6 @@ flowchart LR
     F --> I[("Parquet export<br/>one file per table")]
     G --> I
     H --> I
-    I --> J["Power BI<br/>PDF snapshot"]
     I --> K["Streamlit app<br/>public link"]
 ```
 

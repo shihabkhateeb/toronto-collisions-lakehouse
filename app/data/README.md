@@ -12,5 +12,4 @@ dim_location.parquet
 dq_results.parquet
 ```
 
-`bridge_collision_road_user.parquet` is exported for completeness but the app does
-not read it. The app also accepts `.csv` if you prefer.
+The app also accepts `.csv` if you prefer.

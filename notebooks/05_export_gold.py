@@ -5,8 +5,8 @@
 # MAGIC Runs the data-quality gate, then writes one small Parquet file per table.
 # MAGIC
 # MAGIC `coalesce(1)` gives each output a single `part-*.parquet`, which is what you
-# MAGIC download from the volume browser and point Power BI / Streamlit at.
-# MAGIC Nothing queries Databricks at runtime, so both artifacts keep working after
+# MAGIC download from the volume browser.
+# MAGIC Nothing queries Databricks at runtime, so the app keeps working after
 # MAGIC the Free Edition quota runs out.
 # MAGIC
 # MAGIC Run this after 03 and 04.
@@ -36,7 +36,6 @@ TABLES = [
     (GOLD, "dim_division"),
     (GOLD, "dim_neighbourhood"),
     (GOLD, "dim_location"),
-    (GOLD, "bridge_collision_road_user"),
     (SILVER, "dq_results"),
 ]
 
@@ -55,7 +54,7 @@ for schema, name in TABLES:
 # MAGIC ## Download
 # MAGIC **Catalog → workspace → collisions_gold → exports** → open each folder →
 # MAGIC download the single `part-*.parquet` → rename to `<table>.parquet` in
-# MAGIC `app/data/`. Point Power BI at the same files.
+# MAGIC `app/data/`.
 # MAGIC
 # MAGIC If the browser upload/download stalls on a large file, use the CLI:
 # MAGIC `databricks fs cp dbfs:/Volumes/... ./local/`
